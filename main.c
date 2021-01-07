@@ -1,3 +1,59 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int main(int argc, char *argv[]){
+
+	//argc -> girilen argüman sayısını veriyor
+
+	printf("total arguman sayısı : %d\n",argc);
+
+	int i = 0;
+	int numPublisherType = -1;
+	int numPublisherCount = -1; //in total, there will be numPublisherType * numPublisherCount threads.
+	int numPackagerCount = -1;
+
+	int numPublishingBook = -1;
+
+	int numPackagerBook = -1;
+	int bufferSize = -1;
+
+	for(i = 1 ; i < argc-1 ; i++){
+
+		int sc = -1;
+		if(strcmp(argv[i],"-n") == 0){sc = 0;} // if option is -n
+		else if(strcmp(argv[i],"-b") == 0){sc = 1;} // if option is -b
+		else if(strcmp(argv[i],"-s") == 0){sc = 2;} // // if option is -s
+
+		switch(sc){
+			case 0:
+			numPublisherType = atoi(argv[i+1]); // this is for publisher type threads
+			numPublisherCount = atoi(argv[i+2]); // this is for publisher type threads count
+			numPackagerCount = atoi(argv[i+3]); // this is for packager threads count
+				break;
+			case 1:
+			numPublishingBook = atoi(argv[i+1]); // this indicates how many book each publisher thread can publish
+				break;
+			case 2:
+			numPackagerBook = atoi(argv[i+1]); // this indicates how many book each packager thread can package
+			bufferSize = atoi(argv[i+2]); // this indicates buffer size 
+				break;
+			default:
+				break;
+		}
+		
+	}
+
+	printf("pub type : %d , pub count : %d , pack count : %d , num book : %d , pack book num : %d , buffer size : %d\n",
+			numPublisherType,numPublisherCount,numPackagerCount,numPublishingBook,numPackagerBook,bufferSize);
+
+
+
+	return 0;
+}
+
+
+
 // programda kitap yayınlayıcıları ve yayınlanan kitapları paketleyen packergerslar olacak
 
 //command line üzerinden kaç tane publisher type olacagını , publisher sayısını ve packager sayısını gircez
