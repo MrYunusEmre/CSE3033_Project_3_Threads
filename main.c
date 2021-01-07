@@ -16,8 +16,8 @@ int checkDigit(char temp[]){
 	return 0;
 }
 
-int main(int argc, char *argv[]){
-
+int getAndCheckArguments(int argc , char *argv[], int *numPublisherType , int *numPublisherCount,int *numPackagerCount,
+ 																	int *numPublishingBook, int *numPackagerBook, int *bufferSize){
 	//argc -> girilen argüman sayısını veriyor
 	if(argc != 10){
 		printf("Please check your arguments!\nPlease just write 0 , If you do not want to enter any threads!\n");
@@ -25,21 +25,20 @@ int main(int argc, char *argv[]){
 	}
 
 	int i = 0;
-	int numPublisherType = -1;
-	int numPublisherCount = -1; //in total, there will be numPublisherType * numPublisherCount threads.
-	int numPackagerCount = -1;
-
-	int numPublishingBook = -1;
-
-	int numPackagerBook = -1;
-	int bufferSize = -1;
 
 	for(i = 1 ; i < argc-1 ; i++){
 
 		int sc = -1;
+
+		char temp[50];
+		strcpy(temp,argv[i]);
 		if(strcmp(argv[i],"-n") == 0){sc = 0;} // if option is -n
 		else if(strcmp(argv[i],"-b") == 0){sc = 1;} // if option is -b
 		else if(strcmp(argv[i],"-s") == 0){sc = 2;} // // if option is -s
+		else if(!checkDigit(temp)){
+			printf("Please check your arguments !\n");
+			return -1;
+		}
 
 
 		switch(sc){
@@ -50,10 +49,9 @@ int main(int argc, char *argv[]){
 				printf("Please check your arguments !\n");
 				return -1;
 			}
-			numPublisherType = atoi(argv[i+1]); // this is for publisher type threads
-			numPublisherCount = atoi(argv[i+2]); // this is for publisher type threads count
-			numPackagerCount = atoi(argv[i+3]); // this is for packager threads count
-
+			*numPublisherType = atoi(argv[i+1]); // this is for publisher type threads
+			*numPublisherCount = atoi(argv[i+2]); // this is for publisher type threads count
+			*numPackagerCount = atoi(argv[i+3]); // this is for packager threads count
 				break;
 
 			}
@@ -64,7 +62,7 @@ int main(int argc, char *argv[]){
 				printf("Please check your arguments !\n");
 				return -1;
 			}	
-			numPublishingBook = atoi(argv[i+1]); // this indicates how many book each publisher thread can publish
+			*numPublishingBook = atoi(argv[i+1]); // this indicates how many book each publisher thread can publish
 				break;
 				}
 				
@@ -75,15 +73,45 @@ int main(int argc, char *argv[]){
 				printf("Please check your arguments !\n");
 				return -1;
 			}
-			numPackagerBook = atoi(argv[i+1]); // this indicates how many book each packager thread can package
-			bufferSize = atoi(argv[i+2]); // this indicates buffer size 
+			*numPackagerBook = atoi(argv[i+1]); // this indicates how many book each packager thread can package
+			*bufferSize = atoi(argv[i+2]); // this indicates buffer size 
 				break;
 			}
 			default:
 				break;
 		}
 		
+	}	
+
+	return 0;
+
+
+}
+
+void *publisher(){
+
+}
+
+void *packager(){
+	
+}
+
+
+int main(int argc, char *argv[]){
+
+	int numPublisherType = -1;
+	int numPublisherCount = -1; //in total, there will be numPublisherType * numPublisherCount threads.
+	int numPackagerCount = -1;
+	int numPublishingBook = -1;
+	int numPackagerBook = -1;
+	int bufferSize = -1;
+
+	//Argument Error handling 
+	if(getAndCheckArguments(argc,argv,&numPublisherType,&numPublisherCount,&numPackagerCount,&numPublishingBook,&numPackagerBook,&bufferSize) == -1){
+		return -1;
 	}
+
+
 
 	printf("pub type : %d , pub count : %d , pack count : %d , num book : %d , pack book num : %d , buffer size : %d\n",
 			numPublisherType,numPublisherCount,numPackagerCount,numPublishingBook,numPackagerBook,bufferSize);
