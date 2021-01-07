@@ -2,6 +2,14 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include <pthread.h> 
+#include <semaphore.h>
+
+struct args{
+	int type;
+	int index;
+};
+
 
 int checkDigit(char temp[]){
 	int length = strlen(temp);
@@ -88,12 +96,23 @@ int getAndCheckArguments(int argc , char *argv[], int *numPublisherType , int *n
 
 }
 
-void *publisher(){
+//--------------------------------------------------// Program bunun altında başlıyor 
 
+
+
+void *publisher(void *Args){
+
+	struct args *pArgs = (struct args *)Args;
+
+
+	//printf("thread type : %d , thread count : %d is created!\n",pArgs->type,pArgs->index);
+	pthread_exit((void*)Args);
 }
 
-void *packager(){
-	
+void *packager(void *Args){
+	struct args *pgArgs = (struct args *)Args;
+
+	pthread_exit((void*)Args);
 }
 
 
@@ -112,9 +131,75 @@ int main(int argc, char *argv[]){
 	}
 
 
-
 	printf("pub type : %d , pub count : %d , pack count : %d , num book : %d , pack book num : %d , buffer size : %d\n",
 			numPublisherType,numPublisherCount,numPackagerCount,numPublishingBook,numPackagerBook,bufferSize);
+
+
+	//toplam publisher thread sayısı belli oldugu için fix size array olusturulabilir
+	pthread_t publishers[numPublisherType * numPublisherCount];
+
+	//packager sayısı bilindiğinden fix size array olusturulabilir
+	pthread_t packagers[numPackagerCount];
+
+	void * status;
+	int rc;
+	//Thread metodlarına en fazla 1 argument gönderebiliyoruz !!!
+
+
+	int i = 0; int j = 0; int pIndex = 0; 
+
+	for(i = 1; i <= numPublisherType; i++){
+		for(j = 1; j <= numPublisherCount; j++){
+			struct args pArgs;
+			pArgs.type = i;
+			pArgs.index = j;
+			printf("MAIN : creating publisher thread type : %d , index : %d\n",i,j);
+			rc = pthread_create(&(publishers[pIndex]),NULL,&publisher,&pArgs);
+			if(rc){
+				printf("ERRROOOOOOOOOR\n");
+			}
+
+
+			pIndex++;
+		}
+	}
+	
+	for(i = 0; i < numPackagerCount; i++){
+		struct args pgArgs;
+		pgArgs.type = -1;
+		pgArgs.index = i+1;
+		printf("MAIN : creating packager thread index : %d\n",i);
+		rc = pthread_create(&(packagers[i]),NULL,&packager,&pgArgs);
+		if(rc){
+			printf("ERRROOOOOOOOOR\n");
+		}
+	}
+
+	//Waiting part
+
+	pIndex = 0;
+	for(i = 1; i <= numPublisherType; i++){
+		for(j = 1; j <= numPublisherCount; j++){
+
+			rc = pthread_join(publishers[pIndex], &status);
+	      if (rc) {
+	         printf("ERROR; return code from pthread_join() is %d %d %d\n", rc, i , j);
+	         exit(-1);
+	         }
+	      printf("Main: completed join with thread %ld having a status of %ld\n",pIndex,(long)status);			
+			pIndex++;
+		}
+	}
+
+	for(i = 0; i < numPackagerCount;i++){
+		rc = pthread_join(packagers[i], &status);
+	      if (rc) {
+	         printf("ERROR; return code from pthread_join() is %d %d\n", rc, i );
+	         exit(-1);
+	         }
+	      printf("Main: completed join with thread %ld having a status of %ld\n",i,(long)status);
+		
+	}
 
 
 
