@@ -132,6 +132,10 @@ struct publisherTypeList{ // this struct will hold publisher type list
 typedef struct publisherTypeList PublisherTypeList;
 typedef PublisherTypeList *PublisherTypePtr;
 
+
+
+
+
 //packager part
 struct packagerBufferList{
 	char bookName[50];
@@ -150,6 +154,9 @@ struct packagerList{
 
 typedef struct packagerList PackagerList;
 typedef PackagerList *PackagerListPtr;
+
+
+
 
 // Insert to the publisher type list
 void insertPublisherType(PublisherTypePtr *sPtr,int pType,int pIndex,int bufSize,int threadCount){
@@ -397,7 +404,7 @@ int getPublishedBookSize(int type){ // this method will give us the number of bo
 
 	int count = 0;
 	while(tempBuffer != NULL){
-		if(strlen(tempBuffer->bookName) > 2){ //kitap isminin uzunlugundan node içinde kitap var mı yok mu anlayabilrz
+		if(tempBuffer->bookIndex != -1 && tempBuffer->bookIndex != -2){ //kitap isminin uzunlugundan node içinde kitap var mı yok mu anlayabilrz
 			count++;
 		}
 
@@ -458,7 +465,7 @@ void insertToBuffer(int index , char bookName[], PublisherTypePtr *tempPtr ){
 
 	PublisherBufferPtr tempBuffer = (*tempPtr)->bufferPtr;
 
-	while(tempBuffer->bookIndex != -1){
+	while(tempBuffer->bookIndex != -1 && tempBuffer->bookIndex != -2){
 		tempBuffer = tempBuffer->nextPtr;
 	}
 
@@ -561,10 +568,40 @@ void packageBook(int type, int index){
 	}
 
 	PackagerBufferListPtr bufferPtr = packagerTempPtr->bufferPtr ;
+	
 
-	while(strlen(bufferPtr->bookName) > 2){
-		bufferPtr = bufferPtr->nextPtr ;
+
+	PublisherBufferPtr tempPublisherBuffer = tempPtr->bufferPtr;
+
+	while(tempPublisherBuffer != NULL){      ///dogru kitabı buldk
+ 
+		if(tempPublisherBuffer->bookIndex != -1 && tempPublisherBuffer->bookIndex != -2){
+			break;
+		}
+
+		tempPublisherBuffer = tempPublisherBuffer->nextPtr;
 	}
+	
+
+	while(bufferPtr != NULL){               ///bufferda dogru yeri buldk
+		if(strlen(bufferPtr->bookName) < 2){
+			break;
+		}
+		bufferPtr = bufferPtr->nextPtr;
+	}
+
+	if(tempPublisherBuffer == NULL) printf("NULLLLLL\n");
+	if(bufferPtr == NULL) printf("NULLLLLLLLLLLLLLLLLLLLLLLLL\n");
+
+
+	printf("%s kitabını paketledik\n",tempPublisherBuffer->bookName);
+	strcpy(bufferPtr->bookName , tempPublisherBuffer->bookName); //pack buffer içine kitabı koyduk
+
+	packagerTempPtr->packSize -= 1;
+
+	strcpy(tempPublisherBuffer->bookName , ""); //publisher listte bufferı silmis gibi yaptık
+	tempPublisherBuffer->bookIndex = -2;
+
 
 }
 
@@ -591,10 +628,61 @@ int checkPublisherThread(int type){
 		tempPtr = tempPtr->nextPtr;
 	}
 
-	if(tempPtr->threadCount == 0)		return 1;
+	if(tempPtr->threadCount != 0)		return 1;
 	else 								return 0 ;
 
 }
+
+int checkPackageSize(int index){
+
+	PackagerListPtr tempPtr = packagerStartPtr;
+
+	while(tempPtr != NULL){
+		if(tempPtr->packIndex == index){
+			break;
+		}
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	if(tempPtr->packSize == 0){
+		return 0;
+	}
+	else{
+		return 1;
+	}
+
+}
+
+void printAndResetPackBuffer(int index){
+
+	PackagerListPtr tempPtr = packagerStartPtr;
+
+	while(tempPtr != NULL){
+		if(tempPtr->packIndex == index){
+			break;
+		}
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	PackagerBufferListPtr bufferPtr = tempPtr->bufferPtr ;
+
+	printf("Packager %d\tFinished preparing one package. The package contains: ",index);
+	while(bufferPtr != NULL){
+		printf("%s   " , bufferPtr->bookName);
+		strcpy(bufferPtr->bookName,""); //silmek icin
+		bufferPtr = bufferPtr->nextPtr;
+	}
+	printf("\n");
+
+
+	tempPtr->packSize = numPackagerBook; //
+
+
+}
+
+
+
+sem_t semaphore_queue_packager;
 
 void *packager(void *Args){
 
@@ -602,20 +690,31 @@ void *packager(void *Args){
 	int index = pArgs->index;
 
 	while(1){
-
+	//	sem_wait(&semaphore_queue_packager);
 		// sistemde thread kalmıs mı ona bakıyoruz , kalmamıssa 1 dönecek
 		int randomType = rand() % numPublisherType + 1 ;
-		//printf("random : %d\n",randomType);
+		//printf("random : %d\n",randomType);	
 		if(getPublishedBookSize(randomType) > 0){		// eger bu typedan sistemde kitap varsa >0 dönüyor
 			packageBook(randomType,index); // her seferinde tek kitap packagelayacak
+
+
+			if(checkPackageSize(index) == 0){
+				printAndResetPackBuffer(index);
+			}
+
+
+			printf("type : %d getpublished book : %d\n",randomType,getPublishedBookSize(randomType));
 		}
 		else if(checkPublisherThread(randomType)){			// eger random gelen typedan yoksa baska bir type secene kadar continu
+			printf("Sistemde thread vaaarrrr\n");
 			continue ;
 		}
 		else if(checkAllThreads()){						// sistemde hic thread var mı buna bakıoruz 
 			printf("There are no publishers left in the system.");
 			pthread_exit(NULL);	
 		}
+
+	//	sem_post(&semaphore_queue_packager);
 
 	}
 
@@ -638,6 +737,8 @@ int main(int argc, char *argv[]){
 
 	//packager sayısı bilindiğinden fix size array olusturulabilir
 	pthread_t packagers[numPackagerCount];
+
+	sem_init (&semaphore_queue_packager,0,1); 
 
 	void * status;
 	int rc;
