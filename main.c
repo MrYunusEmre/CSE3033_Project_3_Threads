@@ -106,6 +106,7 @@ int bufferSize = -1;
 typedef struct args{
 	int type;
 	int index;
+	int bookCount;
 }args;
 
 
@@ -123,6 +124,7 @@ struct publisherTypeList{ // this struct will hold publisher type list
 	int pType;
 	int pIndex;
 	int bufSize; // this is the buffer size for each type of publisher buffer
+	sem_t semaphore_queue;
 	struct publisherBufferList *bufferPtr; // this will hold the buffer for corresponding type
 	struct publisherTypeList *nextPtr;
 };
@@ -150,6 +152,7 @@ void insertPublisherType(PublisherTypePtr *sPtr,int pType,int pIndex,int bufSize
 		newPtr->pType = pType;
 		newPtr->pIndex = pIndex;
 		newPtr->bufSize = bufSize;
+		sem_init(&newPtr->semaphore_queue , 0 , 1);
 
 		PublisherBufferPtr bufferStartPtr = NULL;
 
@@ -318,25 +321,9 @@ PublisherTypePtr publisherStartPtr = NULL;
 
 PackagerListPtr packagerStartPtr = NULL;
 
-sem_t semaphore_queue;
 
 
-void incrementBookIndex(PublisherTypePtr *sPtr,int type){
-
-	PublisherTypePtr tempPtr = *sPtr;
-
-	while(tempPtr != NULL){
-		if(tempPtr->pType = type){
-			break;
-		}
-		tempPtr = tempPtr->nextPtr;
-	}
-
-	tempPtr->pIndex = tempPtr->pIndex + 1;
-
-}
-
-void publishBook(int type, int bookIndex){ // dogru type ı bulup onun bufferına eklemek lazım
+void publishBook(int type, int bookIndex , int index){ // dogru type ı bulup onun bufferına eklemek lazım
 
 
 	PublisherTypePtr tempPtr = publisherStartPtr;
@@ -351,9 +338,10 @@ void publishBook(int type, int bookIndex){ // dogru type ı bulup onun bufferın
 	char buf[12];
 	snprintf(buf, 12, "Book%d_%d", type ,tempPtr->pIndex+1);
 
-//	printf("%s kitabı olusturuldu. \n",buf);
-//	printf("%d type node is updating ... \n",type);
-	incrementBookIndex(&publisherStartPtr,type);
+	printf("Publisher %d of type %d \t%s is published and put into the buffer %d.\n",index,type , buf,type);
+
+	tempPtr->pIndex = tempPtr->pIndex + 1 ;
+	
 
 }
 
@@ -364,30 +352,47 @@ void *publisher(void *Args){
 	int type = pArgs->type;
 	int index = pArgs->index;
 
+	PublisherTypePtr tempPtr = publisherStartPtr;
+
+	while(tempPtr != NULL){
+
+		if(type == tempPtr->pType) break;
+
+		tempPtr = tempPtr->nextPtr;
+	}
+
+
+
 //	printf("\nI am thread %d and I am in the semaphore queue now - type : %d , index : %d\n",(int)pthread_self(),type,index);
 //	sem_wait(&semaphore_queue); //threads wait in this semaphore queue
 
 
-	printf("\n%d.type %d.ıncı-) I am thread %d and I have passed the semaphore queue\n",type,index,(int)pthread_self());
-//	printf("thread type : %d threadi geldi \n",pArgs->type);
+	sem_wait(&(tempPtr->semaphore_queue));
 
 	//for döngüsü olacak her publisherın yayınlayabileceği kadar dönecek
-//	int i;
+	int i;
 
-//	printf("publisherda %d type thread içeri girdi\n",type);
-//	for(i = 1; i <= numPublishingBook; i++){
-	//	publishBook(type, i);
-//	}
+//	printf("publisherda type : %d , index : %d thread içeri girdi -> %d\n",type, index , (int)pthread_self());
 
-//	printf("I am existing now. (My ID: %d )\n",(int)pthread_self());
-//	sem_post(&semaphore_queue);
+	for(i = 1; i <= numPublishingBook; i++){
+		publishBook(type, i , index);
+		if(i == numPublishingBook){
+			printf("Publisher %d of type %d \tFinished publishing %d books. Exiting the system.\n",index,type,numPublishingBook);
+		}
+	}
+
+
+//	printf("I am existing now. (My ID: %d ) type : %d index : %d\n",(int)pthread_self() , type , index);
+	sem_post(&(tempPtr->semaphore_queue));
+
 
 }
 
 void *packager(void *Args){
 	struct args *pgArgs = (struct args *)Args;
 
-	pthread_exit((void*)Args);
+	//printf("packager araya girdi\n");
+	
 }
 
 
@@ -400,10 +405,6 @@ int main(int argc, char *argv[]){
 	}
 
 
-//	printf("pub type : %d , pub count : %d , pack count : %d , num book : %d , pack book num : %d , buffer size : %d\n",
-	//		numPublisherType,numPublisherCount,numPackagerCount,numPublishingBook,numPackagerBook,bufferSize);
-
-
 
 	//toplam publisher thread sayısı belli oldugu için fix size array olusturulabilir
 	pthread_t publishers[numPublisherType * numPublisherCount];
@@ -411,15 +412,11 @@ int main(int argc, char *argv[]){
 	//packager sayısı bilindiğinden fix size array olusturulabilir
 	pthread_t packagers[numPackagerCount];
 
-	sem_init (&semaphore_queue,0,1);
-
 	void * status;
 	int rc;
 	//Thread metodlarına en fazla 1 argument gönderebiliyoruz !!!
 
-
 	int i = 0; int j = 0; int pIndex = -1; 
-
 
 
 	for(i = 1; i <= numPublisherType; i++){
@@ -429,15 +426,16 @@ int main(int argc, char *argv[]){
 
 		initiliazeBuffer(&publisherStartPtr , i); // buffer nodes are initiliazed
 
-
+		//semaphore array
 
 		for(j = 1; j <= numPublisherCount; j++){
 
 			pIndex++;
 
-			args *pArgs = (args*)malloc(sizeof(args));
+			args *pArgs = (args*)malloc(sizeof(args)); //.............//
 			pArgs->type = i;
 			pArgs->index = j;
+			pArgs->bookCount = numPublishingBook;
 
 	//		printf("MAIN : creating publisher thread type : %d , index : %d\n",i,j);
 			rc = pthread_create(&(publishers[pIndex]),NULL,&publisher,(void *)pArgs);
@@ -451,19 +449,19 @@ int main(int argc, char *argv[]){
 
 //	printPubTypeList(publisherStartPtr);
 	
-/*	for(i = 0; i < numPackagerCount; i++){
+	for(i = 0; i < numPackagerCount; i++){
 		//Adding into packager list
 		insertPackagerList(&packagerStartPtr , i , numPackagerBook , NULL); // index , size book name
-		struct args pgArgs;
-		pgArgs.type = -1;
-		pgArgs.index = i+1;
+		args *pgArgs = (args*)malloc(sizeof(args)); //.............//
+		pgArgs->type = -1;
+		pgArgs->index = i+1;
 //		printf("MAIN : creating packager thread index : %d\n",i);
 		rc = pthread_create(&(packagers[i]),NULL,&packager,&pgArgs);
 		if(rc){
 			printf("ERRROOOOOOOOOR\n");
 		}
 	}
-*/
+
 //	printPackagerList(packagerStartPtr);
 
 	//Waiting part -- bura sayesinde threadler görevini tamamen bitirdi mi bunu anlıyoruz
@@ -481,7 +479,7 @@ int main(int argc, char *argv[]){
 			pIndex++;
 		}
 	}
-/*
+
 	for(i = 0; i < numPackagerCount;i++){
 		rc = pthread_join(packagers[i], &status);
 	      if (rc) {
@@ -492,7 +490,7 @@ int main(int argc, char *argv[]){
 		
 	}
 
-*/
+
 	printf("Main: program completed. Exiting.\n");
 	pthread_exit(NULL);
 
