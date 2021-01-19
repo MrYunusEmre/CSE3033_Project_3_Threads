@@ -126,6 +126,9 @@ struct publisherTypeList{ // this struct will hold publisher type list
 	int bufSize; // this is the buffer size for each type of publisher buffer
 	int threadCount;
 	sem_t semaphore_queue;
+	sem_t semaphore_queue_packager;
+	sem_t semaphore_pub_pack;
+	int isLocked;
 	pthread_t pubThread[10000000];
 	struct publisherBufferList *bufferPtr; // this will hold the buffer for corresponding type
 	struct publisherTypeList *nextPtr;
@@ -170,7 +173,10 @@ void insertPublisherType(PublisherTypePtr *sPtr,int pType,int pIndex,int bufSize
 		newPtr->pIndex = pIndex;
 		newPtr->bufSize = bufSize;
 		newPtr->threadCount = threadCount;
-		sem_init(&newPtr->semaphore_queue , 0 , 1);
+		newPtr->isLocked = 0;
+		sem_init(&(newPtr->semaphore_queue) , 0 , 1);
+		sem_init(&(newPtr->semaphore_queue_packager), 0 , 1);
+		sem_init(&(newPtr->semaphore_pub_pack) , 0 , 1);
 
 		PublisherBufferPtr bufferStartPtr = NULL;
 
@@ -402,6 +408,8 @@ int getPublishedBookSize(int type){ // this method will give us the number of bo
 		tempPtr = tempPtr->nextPtr;
 	}
 
+	if(tempPtr == NULL) return 0;
+
 	PublisherBufferPtr tempBuffer = tempPtr->bufferPtr;
 
 	int count = 0;
@@ -520,8 +528,8 @@ void *publisher(void *Args){
 
 
 //	printf("\nI am thread %d and I am in the semaphore queue now - type : %d , index : %d\n",(int)pthread_self(),type,index);
-
 	sem_wait(&(tempPtr->semaphore_queue));
+	sem_wait(&(tempPtr->semaphore_pub_pack));
 
 	//for döngüsü olacak her publisherın yayınlayabileceği kadar dönecek
 	int i;
@@ -546,14 +554,16 @@ void *publisher(void *Args){
 
 
 //	printf("I am existing now. (My ID: %d ) type : %d index : %d\n",(int)pthread_self() , type , index);
+	sem_post(&(tempPtr->semaphore_pub_pack));
 	sem_post(&(tempPtr->semaphore_queue));
+
 
 }
 
 //
 
 void packageBook(int type, int index){
-
+	printf("Package book Type : %d index : %d\n", type , index);
 	PublisherTypePtr tempPtr = publisherStartPtr;
 	while(tempPtr != NULL){
 		if(tempPtr->pType == type){
@@ -631,6 +641,8 @@ int checkPublisherThread(int type){
 		tempPtr = tempPtr->nextPtr;
 	}
 
+	if(tempPtr == NULL ) return 0;
+
 	if(tempPtr->threadCount != 0)		return 1;
 	else 								return 0 ;
 
@@ -701,17 +713,75 @@ void waitThread(int type){
 
 		if((tempPtr->pubThread)[i] == 0) continue;
 
-		printf("fucking i : %d type : %d\n",i,type);
+		printf(" i : %d type : %d\nthread : %d\n  ",i,type,(tempPtr->pubThread)[i]);
 		rc = pthread_join((tempPtr->pubThread)[i],NULL);
-
+		printf("After waiting rc : %d\n",rc);
 		if(!rc){
-			break;
+			continue;
 		}
 
 	}
 
 
 }
+
+void lockType(int type){
+
+	PublisherTypePtr tempPtr = publisherStartPtr;
+
+	while(tempPtr != NULL){
+		if(tempPtr->pType == type){
+			break;
+		}
+
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	if(tempPtr == NULL) return;
+
+	sem_wait(&(tempPtr->semaphore_queue_packager));
+
+
+}
+
+void unLockType(int type){
+
+	PublisherTypePtr tempPtr = publisherStartPtr;
+
+	while(tempPtr != NULL){
+		if(tempPtr->pType == type){
+			break;
+		}
+
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	if(tempPtr == NULL) return;
+
+	sem_post(&(tempPtr->semaphore_queue_packager));
+
+}
+
+int checkBooks(){
+
+	PublisherTypePtr tempPtr = publisherStartPtr;
+
+	int flag = 0;
+
+	while(tempPtr != NULL){
+
+		if(getPublishedBookSize(tempPtr->pType) != 0){
+			flag = 1;
+			break;
+		}
+
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	return flag; //1 dönerse kitap var demek
+
+}
+
 
 
 sem_t semaphore_queue_packager;
@@ -721,12 +791,19 @@ void *packager(void *Args){
 	struct args *pArgs = (struct args *)Args;
 	int index = pArgs->index;
 
+	int control = 0;
+
 	while(1){
 
 		// sistemde thread kalmıs mı ona bakıyoruz , kalmamıssa 1 dönecek
 		int randomType = rand() % numPublisherType + 1 ;
+		printf("type : %d lock 1 index : %d \n",randomType,index);
+		lockType(randomType);
+		printf("type : %d lock 1.1 index : %d\n",randomType, index);
 		//printf("random : %d\n",randomType);	
 		if(getPublishedBookSize(randomType) > 0){		// eger bu typedan sistemde kitap varsa >0 dönüyor
+			control = 1;
+			printf("Buradaayıııhhhhh\n");
 			packageBook(randomType,index); // her seferinde tek kitap packagelayacak
 
 
@@ -737,18 +814,26 @@ void *packager(void *Args){
 
 			printf("type : %d getpublished book : %d\n",randomType,getPublishedBookSize(randomType));
 		}
-		else if(checkPublisherThread(randomType)){			// eger random gelen typedan yoksa baska bir type secene kadar continu
-			printf("Sistemde thread vaaarrrr\n");
+		else if(checkPublisherThread(randomType) == 1){			// eger random gelen typedan yoksa baska bir type secene kadar continu
+			printf("type : %d Sistemde thread vaaarrrr***************************************\n",randomType);
 			////join ile bekleyeceğiz ardından yeniden packagebook methodunu cagırmamız lazım
 			waitThread(randomType);
 			packageBook(randomType,index);
 
-			continue ;
+			
 		}
-		else if(checkAllThreads()){						// sistemde hic thread var mı buna bakıoruz 
-			printf("There are no publishers left in the system.");
+		else if(checkBooks() == 0 && checkAllThreads() && control != 0){
+			printf("There are no publishers and books left in the system.\n%d package sistemden ayrılıyor\n",index);
+			printf("lock 3 index : %d\n",index);
+			unLockType(randomType);
+			printf("lock 3.1 index : %d\n",index);
 			pthread_exit(NULL);	
+
 		}
+
+		printf("lock 2 index : %d\n",index);
+		unLockType(randomType);
+		printf("lock 2.1 index : %d\n",index);
 
 	}
 
@@ -780,7 +865,6 @@ int main(int argc, char *argv[]){
 	//Thread metodlarına en fazla 1 argument gönderebiliyoruz !!!
 
 	int i = 0; int j = 0; int pIndex = -1; 
-
 
 	for(i = 1; i <= numPublisherType; i++){
 
@@ -825,6 +909,7 @@ int main(int argc, char *argv[]){
 
 //	printPubTypeList(publisherStartPtr);
 	
+
 	for(i = 0; i < numPackagerCount; i++){
 		//Adding into packager list
 		insertPackagerList(&packagerStartPtr , i+1 , numPackagerBook , NULL); // index , size book name
@@ -839,10 +924,11 @@ int main(int argc, char *argv[]){
 		}
 	}
 
+
 //	printPackagerList(packagerStartPtr);
 
 	//Waiting part -- bura sayesinde threadler görevini tamamen bitirdi mi bunu anlıyoruz
-/*
+
 	pIndex = 0;
 	for(i = 1; i <= numPublisherType; i++){
 		for(j = 1; j <= numPublisherCount; j++){
@@ -866,7 +952,7 @@ int main(int argc, char *argv[]){
 	 //     printf("Main: completed join with thread %ld having a status of %ld\n",i,(long)status);
 		
 	}
-*/
+
 
 	printf("Main: program completed. Exiting.\n");
 	pthread_exit(NULL);
@@ -875,34 +961,3 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
-
-
-// programda kitap yayınlayıcıları ve yayınlanan kitapları paketleyen packergerslar olacak
-
-//command line üzerinden kaç tane publisher type olacagını , publisher sayısını ve packager sayısını gircez
-
-//her publisher type sadece 1 tür kitap yayınlayacak. her yayıncının kaç tane kitap yayınlayacagı da command
-//line üzerinden input olarak verilecek
-
-//kitap ismi type ve kaçıncı kitap olusuna göre isimlendirilecek
-
-//yeni kitap yayınlandıgında o kitabın türüyle ilgili olan threadler o türün buffer ı içine yerleştirecek
-//Bu bufferların başlangıc uzunlukları da command linedan verilecek
-
-//buffer size doldugu zaman yeni kitap koymak isteyen thread bu bufferın size ını 2ye katlayacak
-
-//Eger istenilen rakamda kitap üretilmişse thread systemden cıkacak
-
-//packager threadlerimz bu bufferlardan kitap alacak. packargerlar bütün bufferlardan kitap alabilir
-
-//her packager thread istediği kadar kitap alabilecek. Bu sayı da command linedan verilecek
-
-//bir paket hazırlandıgında , packager thread diğerini hazırlayacak
-
-//packager kitap türünü rastgele seçecek ve sonra o kitabı kendi paketine koyacak (ne diyiy la burda)
-
-//diyelim packagerın gittiği buffer listesi boş . bu durumda packager thread sisteme bakacak bu kitap türünü
-//üreten thread var mı diye eğer varsa onu bekleyecek. Yoksa bir başka buffer a gidecek
-
-//packager threadimiz eger bütün bufferları boş bulduysa ve sistemde publisher thread de yok ise
-//Only i of j number of books could be packaged bu şekilde mesaj bastırp sistemi terk edecek
