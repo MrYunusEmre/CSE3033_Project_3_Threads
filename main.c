@@ -308,7 +308,6 @@ void initiliazeBuffer(PublisherTypePtr *sPtr , int typeIndex){
 	int i = 0;
 	for(i = 0; i < tempPtr->bufSize; i++){
 		insertPublisherBuffer(&(tempPtr->bufferPtr) , -1 , "" );
-	//	printf("%d . kitap node u olustu\n",i+1);
 	}
 
 }
@@ -321,6 +320,91 @@ PublisherTypePtr publisherStartPtr = NULL;
 
 PackagerListPtr packagerStartPtr = NULL;
 
+
+int getPublishedBookSize(int type){ // this method will give us the number of books in the buffer
+
+	PublisherTypePtr tempPtr = publisherStartPtr;
+
+	while(tempPtr != NULL){ // bütün type listesini gezecek ve dogru type ı bulacak
+		if(tempPtr->pType == type){
+			break;
+		}
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	PublisherBufferPtr tempBuffer = tempPtr->bufferPtr;
+
+	int count = 0;
+	while(tempBuffer != NULL){
+		if(strlen(tempBuffer->bookName) > 2){ //kitap isminin uzunlugundan node içinde kitap var mı yok mu anlayabilrz
+			count++;
+		}
+
+		tempBuffer = tempBuffer->nextPtr;
+	}
+
+	return count;
+}
+
+int getNodeNumberInBuffer(int type){
+
+	PublisherTypePtr tempPtr = publisherStartPtr;
+
+	while(tempPtr != NULL){ // bütün type listesini gezecek ve dogru type ı bulacak
+		if(tempPtr->pType == type){
+			break;
+		}
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	PublisherBufferPtr tempBuffer = tempPtr->bufferPtr;
+
+	int count = 0;
+	while(tempBuffer != NULL){
+		count++;
+
+		tempBuffer = tempBuffer->nextPtr;
+	}
+
+	return count;
+
+}
+
+void resizeBuffer(int type){
+
+	PublisherTypePtr tempPtr = publisherStartPtr;
+
+	while(tempPtr != NULL){ // bütün type listesini gezecek ve dogru type ı bulacak
+		if(tempPtr->pType == type){
+			break;
+		}
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	int previousSize = tempPtr->bufSize;
+	tempPtr->bufSize = tempPtr->bufSize * 2; //size is doubled here
+
+	int i = 0;
+
+	for(i = 0 ; i < previousSize ; i++){ // bir önceki size kadar yeni node üretecek
+		insertPublisherBuffer(&(tempPtr->bufferPtr) , -1 , "" ); //creating new nodes 
+	}
+
+
+}
+
+void insertToBuffer(int index , char bookName[], PublisherTypePtr *tempPtr ){
+
+	PublisherBufferPtr tempBuffer = (*tempPtr)->bufferPtr;
+
+	while(tempBuffer->bookIndex != -1){
+		tempBuffer = tempBuffer->nextPtr;
+	}
+
+	tempBuffer->bookIndex = index;
+	strcpy(tempBuffer->bookName,bookName);
+
+}
 
 
 void publishBook(int type, int bookIndex , int index){ // dogru type ı bulup onun bufferına eklemek lazım
@@ -339,6 +423,8 @@ void publishBook(int type, int bookIndex , int index){ // dogru type ı bulup on
 	snprintf(buf, 12, "Book%d_%d", type ,tempPtr->pIndex+1);
 
 	printf("Publisher %d of type %d \t%s is published and put into the buffer %d.\n",index,type , buf,type);
+
+	insertToBuffer(tempPtr->pIndex+1,buf , &tempPtr);
 
 	tempPtr->pIndex = tempPtr->pIndex + 1 ;
 	
@@ -364,8 +450,6 @@ void *publisher(void *Args){
 
 
 //	printf("\nI am thread %d and I am in the semaphore queue now - type : %d , index : %d\n",(int)pthread_self(),type,index);
-//	sem_wait(&semaphore_queue); //threads wait in this semaphore queue
-
 
 	sem_wait(&(tempPtr->semaphore_queue));
 
@@ -375,7 +459,14 @@ void *publisher(void *Args){
 //	printf("publisherda type : %d , index : %d thread içeri girdi -> %d\n",type, index , (int)pthread_self());
 
 	for(i = 1; i <= numPublishingBook; i++){
+
+		if(getPublishedBookSize(type) == getNodeNumberInBuffer(type) ){
+			printf("Publisher %d of type %d \tBuffer is full. Resizing the buffer.\n",index,type);
+			resizeBuffer(type);
+		}
+
 		publishBook(type, i , index);
+
 		if(i == numPublishingBook){
 			printf("Publisher %d of type %d \tFinished publishing %d books. Exiting the system.\n",index,type,numPublishingBook);
 		}
