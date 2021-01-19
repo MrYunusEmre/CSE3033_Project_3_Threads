@@ -1,5 +1,5 @@
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <ctype.h>
 #include <string.h>
 #include <pthread.h> 
@@ -109,7 +109,7 @@ typedef struct args{
 	int bookCount;
 }args;
 
-
+//publisher part
 struct publisherBufferList{ // this struct will hold books for each type 
 	int bookIndex;
 	char bookName[50];
@@ -119,11 +119,11 @@ struct publisherBufferList{ // this struct will hold books for each type
 typedef struct publisherBufferList PublisherBufferList;
 typedef PublisherBufferList *PublisherBufferPtr;
 
-
 struct publisherTypeList{ // this struct will hold publisher type list
 	int pType;
 	int pIndex;
 	int bufSize; // this is the buffer size for each type of publisher buffer
+	int threadCount;
 	sem_t semaphore_queue;
 	struct publisherBufferList *bufferPtr; // this will hold the buffer for corresponding type
 	struct publisherTypeList *nextPtr;
@@ -132,11 +132,19 @@ struct publisherTypeList{ // this struct will hold publisher type list
 typedef struct publisherTypeList PublisherTypeList;
 typedef PublisherTypeList *PublisherTypePtr;
 
+//packager part
+struct packagerBufferList{
+	char bookName[50];
+	struct packagerBufferList *nextPtr;
+};
+
+typedef struct packagerBufferList PackagerBufferList;
+typedef PackagerBufferList *PackagerBufferListPtr;
 
 struct packagerList{
 	int packIndex;
 	int packSize;
-//	char *books[numPackagerBook];
+	struct packagerBufferList *bufferPtr; // this will hold the buffer for corresponding packager
 	struct packagerList *nextPtr;
 };
 
@@ -144,7 +152,7 @@ typedef struct packagerList PackagerList;
 typedef PackagerList *PackagerListPtr;
 
 // Insert to the publisher type list
-void insertPublisherType(PublisherTypePtr *sPtr,int pType,int pIndex,int bufSize){
+void insertPublisherType(PublisherTypePtr *sPtr,int pType,int pIndex,int bufSize,int threadCount){
 
 	PublisherTypePtr newPtr = malloc(sizeof(PublisherTypeList));
 
@@ -152,6 +160,7 @@ void insertPublisherType(PublisherTypePtr *sPtr,int pType,int pIndex,int bufSize
 		newPtr->pType = pType;
 		newPtr->pIndex = pIndex;
 		newPtr->bufSize = bufSize;
+		newPtr->threadCount = threadCount;
 		sem_init(&newPtr->semaphore_queue , 0 , 1);
 
 		PublisherBufferPtr bufferStartPtr = NULL;
@@ -223,11 +232,45 @@ void insertPackagerList(PackagerListPtr *sPtr,int packIndex,int packSize, char b
 	if(newPtr != NULL){
 		newPtr->packIndex = packIndex;
 		newPtr->packSize = packSize;
-		//KITAP ADINI EKLEYECEGIN ZAMAN BURAYI UPDATELEMEN LAZIM UNUTMAAAAAA
 		newPtr->nextPtr = NULL;
+
+		PackagerBufferListPtr pBufferPtr = NULL;
+		newPtr->bufferPtr = NULL;
+		
 
 		PackagerListPtr previousPtr = NULL;
 		PackagerListPtr currentPtr = *sPtr;
+
+		while(currentPtr != NULL){
+			previousPtr = currentPtr;
+			currentPtr = currentPtr->nextPtr;
+		}	
+
+		if(previousPtr == NULL){
+			newPtr->nextPtr = *sPtr;
+			*sPtr = newPtr;
+		}
+		else{
+			previousPtr->nextPtr = newPtr;
+			newPtr->nextPtr = currentPtr;
+		}
+	}
+	else{
+		printf("There is no memory available.\n");
+	}
+}
+
+void insertPackagerBufferList(PackagerBufferListPtr *sPtr , char bookName[]){
+
+	PackagerBufferListPtr newPtr = malloc(sizeof(PackagerBufferList));
+
+	if(newPtr != NULL){
+
+		strcpy(newPtr->bookName,bookName);
+		newPtr->nextPtr = NULL;
+
+		PackagerBufferListPtr previousPtr = NULL;
+		PackagerBufferListPtr currentPtr = *sPtr;
 
 		while(currentPtr != NULL){
 			previousPtr = currentPtr;
@@ -246,7 +289,9 @@ void insertPackagerList(PackagerListPtr *sPtr,int packIndex,int packSize, char b
 	else{
 		printf("There is no memory available.\n");
 	}
+
 }
+
 
 int isEmptyType(PublisherTypePtr sPtr){return sPtr == NULL;}
 int isEmptyPackage(PackagerListPtr sPtr){return sPtr == NULL;}
@@ -312,7 +357,23 @@ void initiliazeBuffer(PublisherTypePtr *sPtr , int typeIndex){
 
 }
 
+void initiliazePackagerBuffer(PackagerListPtr *sPtr, int index){
 
+	PackagerListPtr tempPtr = *sPtr;
+
+	while(tempPtr != NULL){
+		if(tempPtr->packIndex == index){
+			break;
+		}
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	int i=0 ;
+	for(i=0 ; i<numPackagerBook ; i++){
+		insertPackagerBufferList(&(tempPtr->bufferPtr) , "");
+	}
+
+}
 
 //GLOBAL VARIABLES 
 
@@ -468,6 +529,7 @@ void *publisher(void *Args){
 		publishBook(type, i , index);
 
 		if(i == numPublishingBook){
+			tempPtr->threadCount -=  1;
 			printf("Publisher %d of type %d \tFinished publishing %d books. Exiting the system.\n",index,type,numPublishingBook);
 		}
 	}
@@ -476,13 +538,87 @@ void *publisher(void *Args){
 //	printf("I am existing now. (My ID: %d ) type : %d index : %d\n",(int)pthread_self() , type , index);
 	sem_post(&(tempPtr->semaphore_queue));
 
+}
+
+//
+
+void packageBook(int type, int index){
+
+	PublisherTypePtr tempPtr = publisherStartPtr;
+	while(tempPtr != NULL){
+		if(tempPtr->pType == type){
+			break;
+		}
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	PackagerListPtr packagerTempPtr = packagerStartPtr;
+	while(packagerTempPtr != NULL){
+		if(packagerTempPtr->packIndex == index){
+			break;
+		}
+		packagerTempPtr = packagerTempPtr->nextPtr ;
+	}
+
+	PackagerBufferListPtr bufferPtr = packagerTempPtr->bufferPtr ;
+
+	while(strlen(bufferPtr->bookName) > 2){
+		bufferPtr = bufferPtr->nextPtr ;
+	}
+
+}
+
+int checkAllThreads(){
+
+	int control = 0 ;
+	PublisherTypePtr tempPtr = publisherStartPtr;
+	while(tempPtr != NULL){
+		if(tempPtr->threadCount > 0)		control = 1 ;
+		tempPtr = tempPtr->nextPtr;
+	}
+	if(control == 0)		return 1 ;			// eger sistemde thread kalmamışsa 1 dönecek
+	else 					return 0 ;			// varsa 0
+
+}
+
+int checkPublisherThread(int type){
+
+	PublisherTypePtr tempPtr = publisherStartPtr;
+	while(tempPtr != NULL){
+		if(tempPtr->pType == type){
+			break;
+		}
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	if(tempPtr->threadCount == 0)		return 1;
+	else 								return 0 ;
 
 }
 
 void *packager(void *Args){
-	struct args *pgArgs = (struct args *)Args;
 
-	//printf("packager araya girdi\n");
+	struct args *pArgs = (struct args *)Args;
+	int index = pArgs->index;
+
+	while(1){
+
+		// sistemde thread kalmıs mı ona bakıyoruz , kalmamıssa 1 dönecek
+		int randomType = rand() % numPublisherType + 1 ;
+		//printf("random : %d\n",randomType);
+		if(getPublishedBookSize(randomType) > 0){		// eger bu typedan sistemde kitap varsa >0 dönüyor
+			packageBook(randomType,index); // her seferinde tek kitap packagelayacak
+		}
+		else if(checkPublisherThread(randomType)){			// eger random gelen typedan yoksa baska bir type secene kadar continu
+			continue ;
+		}
+		else if(checkAllThreads()){						// sistemde hic thread var mı buna bakıoruz 
+			printf("There are no publishers left in the system.");
+			pthread_exit(NULL);	
+		}
+
+	}
+
 	
 }
 
@@ -513,7 +649,7 @@ int main(int argc, char *argv[]){
 	for(i = 1; i <= numPublisherType; i++){
 
 		//Adding into publisher type list 
-		insertPublisherType(&publisherStartPtr , i , 0 , bufferSize); //type index bufsize
+		insertPublisherType(&publisherStartPtr , i , 0 , bufferSize,numPublisherCount); //type index bufsize
 
 		initiliazeBuffer(&publisherStartPtr , i); // buffer nodes are initiliazed
 
@@ -542,12 +678,13 @@ int main(int argc, char *argv[]){
 	
 	for(i = 0; i < numPackagerCount; i++){
 		//Adding into packager list
-		insertPackagerList(&packagerStartPtr , i , numPackagerBook , NULL); // index , size book name
+		insertPackagerList(&packagerStartPtr , i+1 , numPackagerBook , NULL); // index , size book name
+		initiliazePackagerBuffer(&packagerStartPtr,i+1);
 		args *pgArgs = (args*)malloc(sizeof(args)); //.............//
 		pgArgs->type = -1;
 		pgArgs->index = i+1;
 //		printf("MAIN : creating packager thread index : %d\n",i);
-		rc = pthread_create(&(packagers[i]),NULL,&packager,&pgArgs);
+		rc = pthread_create(&(packagers[i]),NULL,&packager,(void *)pgArgs);
 		if(rc){
 			printf("ERRROOOOOOOOOR\n");
 		}
