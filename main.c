@@ -563,7 +563,7 @@ void *publisher(void *Args){
 //
 
 void packageBook(int type, int index){
-	printf("Package book Type : %d index : %d\n", type , index);
+
 	PublisherTypePtr tempPtr = publisherStartPtr;
 	while(tempPtr != NULL){
 		if(tempPtr->pType == type){
@@ -603,11 +603,9 @@ void packageBook(int type, int index){
 		bufferPtr = bufferPtr->nextPtr;
 	}
 
-	if(tempPublisherBuffer == NULL) printf("NULLLLLL\n");
-	if(bufferPtr == NULL) printf("NULLLLLLLLLLLLLLLLLLLLLLLLL\n");
-
-
-	printf("%s kitabını paketledik\n",tempPublisherBuffer->bookName);
+	if(tempPublisherBuffer == NULL) return;
+	if(bufferPtr == NULL) return;
+	printf("Packager %d \t %s into the package.\n",index,tempPublisherBuffer->bookName);
 	strcpy(bufferPtr->bookName , tempPublisherBuffer->bookName); //pack buffer içine kitabı koyduk
 
 	packagerTempPtr->packSize -= 1;
@@ -713,9 +711,7 @@ void waitThread(int type){
 
 		if((tempPtr->pubThread)[i] == 0) continue;
 
-		printf(" i : %d type : %d\nthread : %ld\n  ",i,type,(tempPtr->pubThread)[i]);
 		rc = pthread_join((tempPtr->pubThread)[i],NULL);
-		printf("After waiting rc : %d\n",rc);
 		if(rc == 0){
 			return;
 		}
@@ -784,7 +780,6 @@ int checkBooks(){
 
 void printAndExit(int index){
 
-	char buf[500];
 	int count = 0 ;
 
 	PackagerListPtr tempPtr = packagerStartPtr;
@@ -799,15 +794,23 @@ void printAndExit(int index){
 	}
 
 	PackagerBufferListPtr bufferPtr = tempPtr->bufferPtr ;
-	while(bufferPtr != NULL){
-		count++;
-		snprintf(buf, 500, "%s", bufferPtr->bookName);
+	int i ;
+	for(i=0 ; i<numPackagerBook ; i++){
+		if(strlen(bufferPtr->bookName)>2){
+			count++;
+		}
 		bufferPtr = bufferPtr->nextPtr;
 	}
-
-	printf("There are no publishers left in the system.Only %d of %d number of books could be packaged.The package contains %s . Exiting the system.\n",count,numPackagerBook,buf);
+	printf("Packager %d \tThere are no publishers left in the system.Only %d of %d number of books could be packaged.The package contains",index,count,numPackagerBook);
+	bufferPtr = tempPtr->bufferPtr ;
+	for(i=0 ; i<numPackagerBook ; i++){
+		if(strlen(bufferPtr->bookName)>2){
+			printf("%s ",bufferPtr->bookName);
+		}
+		bufferPtr = bufferPtr->nextPtr;
+	}
+	printf("Exiting the system.\n");
 	
-
 }
 
 sem_t semaphore_queue_packager;
