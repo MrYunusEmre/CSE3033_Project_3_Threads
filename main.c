@@ -713,11 +713,11 @@ void waitThread(int type){
 
 		if((tempPtr->pubThread)[i] == 0) continue;
 
-		printf(" i : %d type : %d\nthread : %d\n  ",i,type,(tempPtr->pubThread)[i]);
+		printf(" i : %d type : %d\nthread : %ld\n  ",i,type,(tempPtr->pubThread)[i]);
 		rc = pthread_join((tempPtr->pubThread)[i],NULL);
 		printf("After waiting rc : %d\n",rc);
-		if(!rc){
-			continue;
+		if(rc == 0){
+			return;
 		}
 
 	}
@@ -782,7 +782,33 @@ int checkBooks(){
 
 }
 
+void printAndExit(int index){
 
+	char buf[500];
+	int count = 0 ;
+
+	PackagerListPtr tempPtr = packagerStartPtr;
+
+	while(tempPtr != NULL){
+
+		if(tempPtr->packIndex == index){
+			break;
+		}
+
+		tempPtr = tempPtr->nextPtr;
+	}
+
+	PackagerBufferListPtr bufferPtr = tempPtr->bufferPtr ;
+	while(bufferPtr != NULL){
+		count++;
+		snprintf(buf, 500, "%s", bufferPtr->bookName);
+		bufferPtr = bufferPtr->nextPtr;
+	}
+
+	printf("There are no publishers left in the system.Only %d of %d number of books could be packaged.The package contains %s . Exiting the system.\n",count,numPackagerBook,buf);
+	
+
+}
 
 sem_t semaphore_queue_packager;
 
@@ -791,19 +817,18 @@ void *packager(void *Args){
 	struct args *pArgs = (struct args *)Args;
 	int index = pArgs->index;
 
-	int control = 0;
 
 	while(1){
 
 		// sistemde thread kalmıs mı ona bakıyoruz , kalmamıssa 1 dönecek
 		int randomType = rand() % numPublisherType + 1 ;
-		printf("type : %d lock 1 index : %d \n",randomType,index);
+
 		lockType(randomType);
-		printf("type : %d lock 1.1 index : %d\n",randomType, index);
+
 		//printf("random : %d\n",randomType);	
 		if(getPublishedBookSize(randomType) > 0){		// eger bu typedan sistemde kitap varsa >0 dönüyor
-			control = 1;
-			printf("Buradaayıııhhhhh\n");
+
+			//printf("Buradaayıııhhhhh\n");
 			packageBook(randomType,index); // her seferinde tek kitap packagelayacak
 
 
@@ -811,29 +836,25 @@ void *packager(void *Args){
 				printAndResetPackBuffer(index);
 			}
 
-
-			printf("type : %d getpublished book : %d\n",randomType,getPublishedBookSize(randomType));
 		}
 		else if(checkPublisherThread(randomType) == 1){			// eger random gelen typedan yoksa baska bir type secene kadar continu
-			printf("type : %d Sistemde thread vaaarrrr***************************************\n",randomType);
+			//printf("type : %d Sistemde thread vaaarrrr***************************************\n",randomType);
 			////join ile bekleyeceğiz ardından yeniden packagebook methodunu cagırmamız lazım
 			waitThread(randomType);
 			packageBook(randomType,index);
+			if(checkPackageSize(index) == 0){
+				printAndResetPackBuffer(index);
+			}
 
-			
 		}
-		else if(checkBooks() == 0 && checkAllThreads() && control != 0){
-			printf("There are no publishers and books left in the system.\n%d package sistemden ayrılıyor\n",index);
-			printf("lock 3 index : %d\n",index);
+		else if(checkBooks() == 0 && checkAllThreads()){
+			printAndExit(index);
 			unLockType(randomType);
-			printf("lock 3.1 index : %d\n",index);
 			pthread_exit(NULL);	
 
 		}
 
-		printf("lock 2 index : %d\n",index);
 		unLockType(randomType);
-		printf("lock 2.1 index : %d\n",index);
 
 	}
 
@@ -933,7 +954,7 @@ int main(int argc, char *argv[]){
 	for(i = 1; i <= numPublisherType; i++){
 		for(j = 1; j <= numPublisherCount; j++){
 
-			rc = pthread_join(publishers[pIndex], &status);
+			//rc = pthread_join(publishers[pIndex], &status);
 	      if (rc) {
 	         printf("ERROR; return code from pthread_join() is %d %d %d\n", rc, i , j);
 	         exit(-1);
@@ -944,7 +965,7 @@ int main(int argc, char *argv[]){
 	}
 
 	for(i = 0; i < numPackagerCount;i++){
-		rc = pthread_join(packagers[i], &status);
+		  rc = pthread_join(packagers[i], &status);
 	      if (rc) {
 	         printf("ERROR; return code from pthread_join() is %d %d\n", rc, i );
 	         exit(-1);
@@ -960,4 +981,3 @@ int main(int argc, char *argv[]){
 
 	return 0;
 }
-
